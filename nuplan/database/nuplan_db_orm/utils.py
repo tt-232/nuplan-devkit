@@ -60,7 +60,9 @@ def generate_multi_scale_connections(
         for neighbor_dict in node_idx_to_neighbor_dict.values():
             neighbor_dict[f"{scale}_hop_neighbors"] = set()
             for n_hop_neighbor in neighbor_dict[f"{scale - 1}_hop_neighbors"]:
-                for n_plus_1_hop_neighbor in node_idx_to_neighbor_dict[n_hop_neighbor]["1_hop_neighbors"]:
+                for n_plus_1_hop_neighbor in node_idx_to_neighbor_dict[n_hop_neighbor][
+                    "1_hop_neighbors"
+                ]:
                     neighbor_dict[f"{scale}_hop_neighbors"].add(n_plus_1_hop_neighbor)
 
     # Get the connections of each scale.
@@ -188,7 +190,9 @@ def get_future_box_sequence(
 
     # Interpolate box positions at specified time intervals
     target_timestamps: Union[npt.NDArray[np.float64], List[float]] = np.linspace(
-        start=start_timestamp, stop=start_timestamp + future_horizon_len_ms, num=num_target_timestamps
+        start=start_timestamp,
+        stop=start_timestamp + future_horizon_len_ms,
+        num=num_target_timestamps,
     )
 
     for track_token, track in tracks_dict.items():
@@ -198,7 +202,11 @@ def get_future_box_sequence(
             tracks_dict[track_token] = [track[0]] + [None] * num_future_boxes
             continue
         last_box_timestamp = timestamps[last_box_index]
-        target_timestamps = [t for t in target_timestamps if t <= last_box_timestamp + extrapolation_threshold_ms]
+        target_timestamps = [
+            t
+            for t in target_timestamps
+            if t <= last_box_timestamp + extrapolation_threshold_ms
+        ]
 
         box_indices = [i for i, box in enumerate(track) if box is not None]
         interpolated_boxes: List[Optional[Box3D]] = []
@@ -259,7 +267,9 @@ def interpolate_boxes(
         rotation, velocity and angular velocity are interpolated at the target timestamps.
     """
     assert len(timestamps) == len(box_sequence)
-    if sorted(list(timestamps)) != list(timestamps) or sorted(list(target_timestamps)) != list(target_timestamps):
+    if sorted(list(timestamps)) != list(timestamps) or sorted(
+        list(target_timestamps)
+    ) != list(target_timestamps):
         raise ValueError(
             f"Check input. Timestamps should be sorted, but received the following inputs:\n"
             f"timestamps: {list(timestamps)}\ntarget_timestamps: {target_timestamps}"
@@ -270,7 +280,9 @@ def interpolate_boxes(
         target_timestamps=target_timestamps,
     )
     rotations = interpolate_rotations(
-        boxes=box_sequence, box_timestamps=list(timestamps), target_timestamps=list(target_timestamps)
+        boxes=box_sequence,
+        box_timestamps=list(timestamps),
+        target_timestamps=list(target_timestamps),
     )
     velocities = interpolate_coordinates(
         box_timestamps=timestamps,
@@ -279,14 +291,21 @@ def interpolate_boxes(
     )
 
     angular_velocities = np.interp(
-        x=target_timestamps, xp=timestamps, fp=np.array([box.angular_velocity for box in box_sequence])
+        x=target_timestamps,
+        xp=timestamps,
+        fp=np.array([box.angular_velocity for box in box_sequence]),
     )
 
     first_box = box_sequence[0]
     interpolated_boxes = []
     for c, r, v, w in zip(centers, rotations, velocities, angular_velocities):
         next_box = first_box.copy()
-        next_box.center, next_box.orientation, next_box.velocity, next_box.angular_velocity = c, r, v, w
+        (
+            next_box.center,
+            next_box.orientation,
+            next_box.velocity,
+            next_box.angular_velocity,
+        ) = (c, r, v, w)
         interpolated_boxes.append(next_box)
 
     return interpolated_boxes
@@ -311,10 +330,16 @@ def interpolate_rotations(
         next_box_index = bisect_right(box_timestamps[:-1], current_target_timestamp)
         prev_box_index = next_box_index - 1
         assert prev_box_index >= 0
-        tdiff_between_boxes = box_timestamps[next_box_index] - box_timestamps[prev_box_index]
+        tdiff_between_boxes = (
+            box_timestamps[next_box_index] - box_timestamps[prev_box_index]
+        )
         assert tdiff_between_boxes > 0.0
-        target_tdiff_from_prev = current_target_timestamp - box_timestamps[prev_box_index]
-        target_timestamp_relative_position = target_tdiff_from_prev / tdiff_between_boxes
+        target_tdiff_from_prev = (
+            current_target_timestamp - box_timestamps[prev_box_index]
+        )
+        target_timestamp_relative_position = (
+            target_tdiff_from_prev / tdiff_between_boxes
+        )
         interpolated_box_rotation = Quaternion.slerp(
             q0=boxes[prev_box_index].orientation,
             q1=boxes[next_box_index].orientation,
@@ -342,17 +367,23 @@ def interpolate_coordinates(
     """
     xs = list(
         np.interp(
-            x=target_timestamps, xp=box_timestamps, fp=np.array([coordinate[0] for coordinate in box_coordinates])
+            x=target_timestamps,
+            xp=box_timestamps,
+            fp=np.array([coordinate[0] for coordinate in box_coordinates]),
         )
     )
     ys = list(
         np.interp(
-            x=target_timestamps, xp=box_timestamps, fp=np.array([coordinate[1] for coordinate in box_coordinates])
+            x=target_timestamps,
+            xp=box_timestamps,
+            fp=np.array([coordinate[1] for coordinate in box_coordinates]),
         )
     )
     zs = list(
         np.interp(
-            x=target_timestamps, xp=box_timestamps, fp=np.array([coordinate[2] for coordinate in box_coordinates])
+            x=target_timestamps,
+            xp=box_timestamps,
+            fp=np.array([coordinate[2] for coordinate in box_coordinates]),
         )
     )
     centers = [np.array([x, y, z]) for x, y, z in zip(xs, ys, zs)]  # type: ignore
@@ -360,7 +391,9 @@ def interpolate_coordinates(
 
 
 def pack_future_boxes(
-    track_token_2_box_sequence: Dict[str, List[Box3D]], future_horizon_len_s: float, future_interval_s: float
+    track_token_2_box_sequence: Dict[str, List[Box3D]],
+    future_horizon_len_s: float,
+    future_interval_s: float,
 ) -> List[Box3D]:
     """
     Given a mapping from all the track tokens to the list of corresponding boxes at each future
@@ -376,8 +409,15 @@ def pack_future_boxes(
     boxes_out: List[Box3D] = []
     for track_token, box_sequence in track_token_2_box_sequence.items():
         current_box = box_sequence[0]
-        future_centers = [[box.center if box else (np.nan, np.nan, np.nan) for box in box_sequence[1:]]]
-        future_orientations = [[box.orientation if box else None for box in box_sequence[1:]]]
+        future_centers = [
+            [
+                box.center if box else (np.nan, np.nan, np.nan)
+                for box in box_sequence[1:]
+            ]
+        ]
+        future_orientations = [
+            [box.orientation if box else None for box in box_sequence[1:]]
+        ]
         mode_probs = [1.0]
         box_with_future = Box3D(
             center=current_box.center,
@@ -409,7 +449,9 @@ def transform_ego_traj(
     :param transform_matrix: Transformation to apply.
     :return The transformed ego poses.
     """
-    ego_poses_new = transform_matrix[:3, :3] @ ego_poses[:, 0:3].T + transform_matrix[:3, 3].reshape((-1, 1))
+    ego_poses_new = transform_matrix[:3, :3] @ ego_poses[:, 0:3].T + transform_matrix[
+        :3, 3
+    ].reshape((-1, 1))
     ego_poses[:, 0:3] = ego_poses_new.T
 
     return ego_poses
@@ -450,11 +492,17 @@ def get_future_ego_trajectory(
 
     # We want to get ego pose at target timestamps, so we have to interpolate.
     target_timestamps: Union[npt.NDArray[np.float64], List[float]] = np.linspace(
-        start=start_timestamp, stop=start_timestamp + future_horizon_len_s * 1e6, num=num_target_timestamps
+        start=start_timestamp,
+        stop=start_timestamp + future_horizon_len_s * 1e6,
+        num=num_target_timestamps,
     )
     # The ego trajectory may be smaller because of the end of extraction.
     last_ego_timestamp = timestamps[-1]
-    target_timestamps = [t for t in target_timestamps if t <= last_ego_timestamp + extrapolation_threshold_ms]
+    target_timestamps = [
+        t
+        for t in target_timestamps
+        if t <= last_ego_timestamp + extrapolation_threshold_ms
+    ]
 
     interpolated_ego_traj = interpolate_coordinates(
         target_timestamps=target_timestamps,
@@ -477,7 +525,9 @@ def get_future_ego_trajectory(
     ego_poses = transform_ego_traj(ego_traj_np, lidarpc_rec.ego_pose.trans_matrix_inv)  # type: ignore
 
     transf_matrix = transformmatrix.astype(np.float32)  # type: ignore
-    ego_poses = transformmatrix[:3, :3] @ ego_traj_np[:, 0:3].T + transf_matrix[:3, 3].reshape((-1, 1))
+    ego_poses = transformmatrix[:3, :3] @ ego_traj_np[:, 0:3].T + transf_matrix[
+        :3, 3
+    ].reshape((-1, 1))
     ego_traj_np[:, 0:3] = ego_poses.T
 
     return ego_traj_np
@@ -503,8 +553,12 @@ def get_candidates(
     y_min, y_max = position[1] + yrange[0], position[1] + yrange[1]
 
     patch = geometry.box(x_min, y_min, x_max, y_max)
-    candidate_lane_groups = lane_groups_gdf[lane_groups_gdf["geometry"].intersects(patch)]
-    candidate_intersections = intersections_gdf[intersections_gdf["geometry"].intersects(patch)]
+    candidate_lane_groups = lane_groups_gdf[
+        lane_groups_gdf["geometry"].intersects(patch)
+    ]
+    candidate_intersections = intersections_gdf[
+        intersections_gdf["geometry"].intersects(patch)
+    ]
 
     return candidate_lane_groups, candidate_intersections
 
@@ -549,7 +603,9 @@ def render_pc(
     ax.set_title("{}".format(title))
 
 
-def translate(inp: npt.NDArray[np.float64], x: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+def translate(
+    inp: npt.NDArray[np.float64], x: npt.NDArray[np.float64]
+) -> npt.NDArray[np.float64]:
     """
     Translate a vector.
     :param inp: Vector to translate.
@@ -559,7 +615,9 @@ def translate(inp: npt.NDArray[np.float64], x: npt.NDArray[np.float64]) -> npt.N
     return inp + x
 
 
-def rotate(inp: npt.NDArray[np.float64], quaternion: Quaternion) -> npt.NDArray[np.float64]:
+def rotate(
+    inp: npt.NDArray[np.float64], quaternion: Quaternion
+) -> npt.NDArray[np.float64]:
     """
     Rotate a vector.
     :param inp: Vector to rotate.
@@ -570,7 +628,9 @@ def rotate(inp: npt.NDArray[np.float64], quaternion: Quaternion) -> npt.NDArray[
     return np.dot(rotation_matrix, inp)  # type: ignore
 
 
-def transform(inp: npt.NDArray[np.float64], trans_matrix: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+def transform(
+    inp: npt.NDArray[np.float64], trans_matrix: npt.NDArray[np.float64]
+) -> npt.NDArray[np.float64]:
     """
     Transform a vector.
     :param inp: Vector to transform.
@@ -582,7 +642,9 @@ def transform(inp: npt.NDArray[np.float64], trans_matrix: npt.NDArray[np.float64
     return inp
 
 
-def scale(inp: npt.NDArray[np.float64], scale: Tuple[float, float, float]) -> npt.NDArray[np.float64]:
+def scale(
+    inp: npt.NDArray[np.float64], scale: Tuple[float, float, float]
+) -> npt.NDArray[np.float64]:
     """
     Scale a vector.
     :param inp: Vector to scale.
@@ -594,9 +656,10 @@ def scale(inp: npt.NDArray[np.float64], scale: Tuple[float, float, float]) -> np
     return inp * scale_np
 
 
-def get_colors_marker(
-    labelmap: Optional[Dict[int, Label]], box: Box3D
-) -> Tuple[Optional[Tuple[Tuple[float, float, float], Tuple[float, float, float], str]], Optional[str]]:
+def get_colors_marker(labelmap: Optional[Dict[int, Label]], box: Box3D) -> Tuple[
+    Optional[Tuple[Tuple[float, float, float], Tuple[float, float, float], str]],
+    Optional[str],
+]:
     """
     Get the color and marker to use.
     :param labelmap: The labelmap is used to color the boxes. If not provided, default colors from box.render() will be
@@ -643,9 +706,22 @@ def draw_line(
     """
     if isinstance(canvas, np.ndarray):
         color_int = tuple(int(c * 255) for c in color)
-        cv2.line(canvas, (int(from_x), int(from_y)), (int(to_x), int(to_y)), color_int[::-1], linewidth)
+        cv2.line(
+            canvas,
+            (int(from_x), int(from_y)),
+            (int(to_x), int(to_y)),
+            color_int[::-1],
+            linewidth,
+        )
     else:
-        canvas.plot([from_x, to_x], [from_y, to_y], color=color, linewidth=linewidth, marker=marker, alpha=alpha)
+        canvas.plot(
+            [from_x, to_x],
+            [from_y, to_y],
+            color=color,
+            linewidth=linewidth,
+            marker=marker,
+            alpha=alpha,
+        )
 
 
 def draw_future_ego_poses(
@@ -722,7 +798,11 @@ def render_on_map(
     if ax is None:
         _, ax = plt.subplots(1, 1, figsize=(9, 9))
 
-    (intensity_map_crop, intensity_map_translation, intensity_map_scale,) = lidarpc_rec.ego_pose.get_map_crop(  # type: ignore
+    (
+        intensity_map_crop,
+        intensity_map_translation,
+        intensity_map_scale,
+    ) = lidarpc_rec.ego_pose.get_map_crop(  # type: ignore
         db.maps_db, xrange, yrange, "intensity", rotate_face_up=True  # type: ignore
     )
 
@@ -740,7 +820,9 @@ def render_on_map(
     # Extract the rotation angle around 'z' axis. After this rotation, the points and boxes are oriented with
     # ego_vehicle facing right. To make it face up, we add extra pi/2 rotation.
     map_align_rot_angle = map_align_rot.as_euler("zxy")[0] + (math.pi / 2)
-    map_align_transform = Quaternion(axis=[0, 0, 1], angle=map_align_rot_angle).transformation_matrix
+    map_align_transform = Quaternion(
+        axis=[0, 0, 1], angle=map_align_rot_angle
+    ).transformation_matrix
 
     if render_map_raster:
         map_raster, map_translation, map_scale = lidarpc_rec.ego_pose.get_map_crop(  # type: ignore
@@ -782,7 +864,9 @@ def render_on_map(
     # Since point clouds are in float32 and global coordinates can have values
     # over 4 million, we avoid putting the pointcloud itself in global coordinates
     # by combining these transforms into one.
-    lidar_to_crop = reduce(np.dot, [global_to_crop, ego_to_global, lidar_to_ego, map_align_transform])
+    lidar_to_crop = reduce(
+        np.dot, [global_to_crop, ego_to_global, lidar_to_ego, map_align_transform]
+    )
 
     # Ego car parameters, width and length.
     front_length = 4.049
@@ -804,7 +888,9 @@ def render_on_map(
     ego_box.translate(map_translation)
 
     color = (1.0, 0.0, 0.0)  # Ego car in red color.
-    colors: Optional[Tuple[Tuple[float, float, float], Tuple[float, float, float], str]] = (color, color, "k")
+    colors: Optional[
+        Tuple[Tuple[float, float, float], Tuple[float, float, float], str]
+    ] = (color, color, "k")
     ego_box.render(ax, colors=colors)
 
     if render_future_ego_poses:
@@ -857,7 +943,9 @@ def render_on_map(
         if track_token is not None:
             if box_copy.track_token != track_token:
                 continue
-        if (np.abs(box_copy.center[0]) <= radius) and (np.abs(box_copy.center[1]) <= radius):
+        if (np.abs(box_copy.center[0]) <= radius) and (
+            np.abs(box_copy.center[1]) <= radius
+        ):
             colors, marker = get_colors_marker(labelmap, box_copy)
             if track_token is None and with_random_color:
                 c = np.array(cmap(idx)[:3])  # type: ignore
@@ -868,7 +956,12 @@ def render_on_map(
             box_copy.transform(ego_to_global)
             box_copy.scale(map_scale)
             box_copy.translate(map_translation)
-            box_copy.render(ax, colors=colors, marker=marker, with_velocity=render_boxes_with_velocity)
+            box_copy.render(
+                ax,
+                colors=colors,
+                marker=marker,
+                with_velocity=render_boxes_with_velocity,
+            )
 
     ax.axis("off")
     ax.set_aspect("equal")
@@ -898,8 +991,11 @@ def boxes_lidar_to_img(
     img_from_ego = img_record.camera.trans_matrix_inv  # type: ignore
 
     # Fuse four transformation matrices into one
-    trans_matrix = reduce(np.dot, [img_from_ego, ego_from_global, global_from_ego, ego_from_lidar])
-
+    trans_matrix = reduce(
+        np.dot, [img_from_ego, ego_from_global, global_from_ego, ego_from_lidar]
+    )
+    print(trans_matrix)
+    print(len(boxes_lidar))
     boxes_img = []
     for box in boxes_lidar:
 
@@ -955,12 +1051,18 @@ def load_pointcloud_from_pc(
     # Check inputs
     assert sweep_map in ["time_lag", "sweep_idx"]
     if isinstance(nsweeps, int):
-        nsweeps = list(range(-nsweeps + 1, 0 + 1))  # Use present sweep and past (nsweeps-1) sweeps
+        nsweeps = list(
+            range(-nsweeps + 1, 0 + 1)
+        )  # Use present sweep and past (nsweeps-1) sweeps
     elif isinstance(nsweeps, list):
-        assert 0 in nsweeps, f"Error: Present sweep (0) must be included! nsweeps is: {nsweeps}"
+        assert (
+            0 in nsweeps
+        ), f"Error: Present sweep (0) must be included! nsweeps is: {nsweeps}"
     else:
         raise TypeError("Invalid nsweeps type: {}".format(type(nsweeps)))
-    assert sorted(nsweeps) == nsweeps, "Error: nsweeps must be sorted in ascending order!"
+    assert (
+        sorted(nsweeps) == nsweeps
+    ), "Error: nsweeps must be sorted in ascending order!"
 
     lidarpc_rec = nuplandb.lidar_pc[token]  # type: ignore
     time_current = lidarpc_rec.timestamp
@@ -1005,7 +1107,10 @@ def load_pointcloud_from_pc(
 
             # Fuse four transformation matrices into one and perform transform
             # noinspection PyUnboundLocalVariable
-            trans_matrix = reduce(np.dot, [lidar_from_car, car_from_global, global_from_car, car_from_lidar])
+            trans_matrix = reduce(
+                np.dot,
+                [lidar_from_car, car_from_global, global_from_car, car_from_lidar],
+            )
             sweep_pc.transform(trans_matrix)
 
         # Remove points that are too far *after* putting the points in the present lidar coordinate frame.
@@ -1017,13 +1122,21 @@ def load_pointcloud_from_pc(
         # Augment with sweep idx (Pixor) or time different (PointPillars)
         if sweep_map == "sweep_idx":
             rel_sweep_idx_pixor = np.array(rel_sweep_idx, dtype=np.float32) + 1
-            assert rel_sweep_idx_pixor > 0  # Must be in [1, n] since pixor_cython uses unsigned ints
-            sweep_vector = rel_sweep_idx_pixor * np.ones((1, sweep_pc.nbr_points()), dtype=np.float32)
+            assert (
+                rel_sweep_idx_pixor > 0
+            )  # Must be in [1, n] since pixor_cython uses unsigned ints
+            sweep_vector = rel_sweep_idx_pixor * np.ones(
+                (1, sweep_pc.nbr_points()), dtype=np.float32
+            )
         elif sweep_map == "time_lag":
             # Positive difference for past sweeps. Do not change this or existing models will be affected!
             # noinspection PyUnboundLocalVariable
-            time_lag = time_current - sweep_lidarpc_rec.timestamp if sweep_idx != 0 else 0
-            sweep_vector = 1e-6 * time_lag * np.ones((1, sweep_pc.nbr_points()), dtype=np.float32)
+            time_lag = (
+                time_current - sweep_lidarpc_rec.timestamp if sweep_idx != 0 else 0
+            )
+            sweep_vector = (
+                1e-6 * time_lag * np.ones((1, sweep_pc.nbr_points()), dtype=np.float32)
+            )
         else:
             raise ValueError("Cannot recognize sweep_map type: {}".format(sweep_map))
 
@@ -1148,12 +1261,18 @@ def prepare_pointcloud_points(
 
             # First select all points for non a-pillar lidars.
             keep = np.logical_or(
-                keep, (pc.points[5] != a_pillar_lidar_indices[0]) & (pc.points[5] != a_pillar_lidar_indices[1])
+                keep,
+                (pc.points[5] != a_pillar_lidar_indices[0])
+                & (pc.points[5] != a_pillar_lidar_indices[1]),
             )
 
             # Only select specific rings from the a-pillar lidars now.
             for index in a_pillar_lidar_indices:
-                keep = np.logical_or(keep, (pc.points[5] == index) & np.isin(pc.points[4], ring_indices_to_keep))
+                keep = np.logical_or(
+                    keep,
+                    (pc.points[5] == index)
+                    & np.isin(pc.points[4], ring_indices_to_keep),
+                )
 
             pc.points = pc.points[:, keep]
     else:
@@ -1161,7 +1280,9 @@ def prepare_pointcloud_points(
         keep = np.zeros(pc.points.shape[1])
         for index in lidar_indices:
             if sample_apillar_lidar_rings and index in a_pillar_lidar_indices:
-                current_keep = (pc.points[5] == index) & np.isin(pc.points[4], ring_indices_to_keep)
+                current_keep = (pc.points[5] == index) & np.isin(
+                    pc.points[4], ring_indices_to_keep
+                )
             else:
                 current_keep = pc.points[5] == index
             keep = np.logical_or(keep, current_keep)
@@ -1215,13 +1336,16 @@ def load_boxes_from_lidarpc(
     if future_horizon_len_s:
         assert 0 < future_interval_s <= future_horizon_len_s
         all_boxes = lidarpc_rec.boxes_with_future_waypoints(  # type: ignore
-            future_horizon_len_s=future_horizon_len_s, future_interval_s=future_interval_s
+            future_horizon_len_s=future_horizon_len_s,
+            future_interval_s=future_interval_s,
         )
     else:
         all_boxes = lidarpc_rec.boxes()  # type: ignore
 
     # Filter boxes for relevant classes and bikeracks.
-    global2boxes: Dict[str, List[Box3D]] = {global_name: [] for global_name in target_category_names}
+    global2boxes: Dict[str, List[Box3D]] = {
+        global_name: [] for global_name in target_category_names
+    }
     for box in all_boxes:
         current_global_name = nuplandb.lidar_box[box.token].category.name  # type: ignore
         if current_global_name in target_category_names:
@@ -1252,7 +1376,9 @@ def load_boxes_from_lidarpc(
         trans_matrix = reduce(np.dot, [lidar_from_car, car_from_global])
 
         transformed_boxes = [_box_transform(box, trans_matrix) for box in boxes]
-        filtered_boxes = [box for box in transformed_boxes if box.distance_plane < max_distance]
+        filtered_boxes = [
+            box for box in transformed_boxes if box.distance_plane < max_distance
+        ]
         global2boxes[global_name] = filtered_boxes
 
     return global2boxes
@@ -1269,7 +1395,9 @@ def _box_transform(box: Box3D, trans_matrix: npt.NDArray[np.float64]) -> Box3D:
     return box
 
 
-def split_vehicles_by_size(boxes: List[Box3D], short_vehicles_id: int, long_vehicles_id: int) -> List[Box3D]:
+def split_vehicles_by_size(
+    boxes: List[Box3D], short_vehicles_id: int, long_vehicles_id: int
+) -> List[Box3D]:
     """
     This function splits vehicles into a different classes based on whether they are longer or shorter than 7m
     in length. It assigns labels to boxes
@@ -1299,7 +1427,8 @@ def split_vehicles_by_size(boxes: List[Box3D], short_vehicles_id: int, long_vehi
 
 
 def crop_rect(
-    img: npt.NDArray[np.float64], rect: Tuple[Tuple[float, float], Tuple[float, float], float]
+    img: npt.NDArray[np.float64],
+    rect: Tuple[Tuple[float, float], Tuple[float, float], float],
 ) -> npt.NDArray[np.float64]:
     """
     Crop a rectangle from a 2D image.
@@ -1324,8 +1453,12 @@ def crop_rect(
 
     new_center = (rect_diagonal_length / 2, rect_diagonal_length / 2)
     M = cv2.getRotationMatrix2D(new_center, angle, 1)
-    rotated_img: npt.NDArray[np.float64] = cv2.warpAffine(crop_before_rotate, M, crop_size_before_rotate)
-    cropped_img: npt.NDArray[np.float64] = cv2.getRectSubPix(rotated_img, size, new_center)
+    rotated_img: npt.NDArray[np.float64] = cv2.warpAffine(
+        crop_before_rotate, M, crop_size_before_rotate
+    )
+    cropped_img: npt.NDArray[np.float64] = cv2.getRectSubPix(
+        rotated_img, size, new_center
+    )
 
     return cropped_img
 

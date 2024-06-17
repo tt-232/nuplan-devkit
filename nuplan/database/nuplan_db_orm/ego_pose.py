@@ -16,9 +16,17 @@ from sqlalchemy.types import Float, Integer
 from nuplan.database.common import sql_types
 from nuplan.database.common.utils import simple_repr
 from nuplan.database.maps_db.gpkg_mapsdb import GPKGMapsDB
-from nuplan.database.maps_db.utils import build_lane_segments_from_blps, connect_blp_predecessor, connect_blp_successor
+from nuplan.database.maps_db.utils import (
+    build_lane_segments_from_blps,
+    connect_blp_predecessor,
+    connect_blp_successor,
+)
 from nuplan.database.nuplan_db_orm.models import Base
-from nuplan.database.nuplan_db_orm.utils import crop_rect, generate_multi_scale_connections, get_candidates
+from nuplan.database.nuplan_db_orm.utils import (
+    crop_rect,
+    generate_multi_scale_connections,
+    get_candidates,
+)
 from nuplan.database.nuplan_db_orm.vector_map_np import VectorMapNp
 
 logger = logging.getLogger()
@@ -50,7 +58,9 @@ class EgoPose(Base):
     angular_rate_y = Column(Float)  # type: float
     angular_rate_z = Column(Float)  # type: float
     epsg = Column(Integer)  # type: int
-    log_token = Column(sql_types.HexLen8, ForeignKey("log.token"), nullable=False)  # type: str
+    log_token = Column(
+        sql_types.HexLen8, ForeignKey("log.token"), nullable=False
+    )  # type: str
 
     @property
     def _session(self) -> Any:
@@ -106,21 +116,25 @@ class EgoPose(Base):
         tm[:3, 3] = rot_inv.dot(np.transpose(-self.translation_np))
         return tm
 
-    def rotate_2d_points2d_to_ego_vehicle_frame(self, points2d: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+    def rotate_2d_points2d_to_ego_vehicle_frame(
+        self, points2d: npt.NDArray[np.float64]
+    ) -> npt.NDArray[np.float64]:
         """
         Rotate 2D points from global frame to ego-vehicle frame.
         :param points2d: <np.float: num_points, 2>. 2D points in global frame.
         :return: <np.float: num_points, 2>. 2D points rotated to ego-vehicle frame.
         """
         # Add zeros to the z dimension to make them 3D points.
-        points3d: npt.NDArray[np.float32] = np.concatenate((points2d, np.zeros_like(points2d[:, 0:1])), axis=-1)
+        points3d: npt.NDArray[np.float32] = np.concatenate(
+            (points2d, np.zeros_like(points2d[:, 0:1])), axis=-1
+        )
         # We need to extract the rotation around the z-axis only. since we are cropping a 2D map.
         # Construct scipy rotation instance using the rotation matrix from quaternion.
         rotation = R.from_matrix(self.quaternion.rotation_matrix.T)
         # Extract the angle of rotation around z-axis from the rotation.
-        ego_rotation_angle = rotation.as_euler('zxy', degrees=True)[0]
+        ego_rotation_angle = rotation.as_euler("zxy", degrees=True)[0]
         # Construct scipy rotation instance using ego_rotation_angle.
-        xy_rotation = R.from_euler('z', ego_rotation_angle, degrees=True)
+        xy_rotation = R.from_euler("z", ego_rotation_angle, degrees=True)
         # Rotate the corner points of the desired map crop to align with ego pose.
         rotated_points3d = xy_rotation.apply(points3d)
         # Remove the z dimension.
@@ -135,7 +149,9 @@ class EgoPose(Base):
         map_layer_name: str,
         rotate_face_up: bool,
         target_imsize_xy: Optional[Tuple[float, float]] = None,
-    ) -> Tuple[Optional[npt.NDArray[np.float64]], npt.NDArray[np.float64], Tuple[float, ...]]:
+    ) -> Tuple[
+        Optional[npt.NDArray[np.float64]], npt.NDArray[np.float64], Tuple[float, ...]
+    ]:
         """
         This function returns the crop of the map centered at the current ego-pose with the given xrange and yrange.
         :param maps_db: Map database associated with this database.
@@ -154,6 +170,7 @@ class EgoPose(Base):
             map_scale and map_translation are useful for transforming objects like pointcloud/boxes to the map_crop.
             Refer to render_on_map().
         """
+        map_layer = None
         if maps_db is None:
             precision: float = 1
 
@@ -185,10 +202,10 @@ class EgoPose(Base):
         # Construct scipy rotation instance using the rotation matrix from quaternion.
         rotation = R.from_matrix(self.quaternion.rotation_matrix.T)
         # Extract the angle of rotation around z-axis from the rotation.
-        ego_rotation_angle = rotation.as_euler('zxy', degrees=True)[0]
+        ego_rotation_angle = rotation.as_euler("zxy", degrees=True)[0]
         # Construct scipy rotation instance using ego_rotation_angle.
 
-        xy_rotation = R.from_euler('z', ego_rotation_angle, degrees=True)
+        xy_rotation = R.from_euler("z", ego_rotation_angle, degrees=True)
 
         map_rotate = 0
 
@@ -203,13 +220,20 @@ class EgoPose(Base):
         )[:, :2]
 
         # Construct minAreaRect using 4 corner points
-        rect = cv2.minAreaRect(np.hstack([rotated[:, :1] + center_x, rotated[:, 1:] + center_y]).astype(int))
+        rect = cv2.minAreaRect(
+            np.hstack([rotated[:, :1] + center_x, rotated[:, 1:] + center_y]).astype(
+                int
+            )
+        )
         rect_angle = rect[2]
 
         # Due to rounding error, the dimensions returned by cv2 may be off by 1, therefore it's better to manually
         # calculate the cropped dimensions instead of relying on the values returned by cv2 in rect[1]
         cropped_dimensions: npt.NDArray[np.float32] = np.array(
-            [map_scale[0] * (xrange[1] - xrange[0]), map_scale[1] * (yrange[1] - yrange[0])]
+            [
+                map_scale[0] * (xrange[1] - xrange[0]),
+                map_scale[1] * (yrange[1] - yrange[0]),
+            ]
         )
         rect = (rect[0], cropped_dimensions, rect_angle)
 
@@ -217,7 +241,12 @@ class EgoPose(Base):
         # appears to be [0, 90), though this isn't documented anywhere. To be compatible with both versions,
         # we adjust the angle to be [-90,0) if it isn't already.
         rect_angle = rect[2]
-        cropped_dimensions = np.array([map_scale[0] * (xrange[1] - xrange[0]), map_scale[1] * (yrange[1] - yrange[0])])
+        cropped_dimensions = np.array(
+            [
+                map_scale[0] * (xrange[1] - xrange[0]),
+                map_scale[1] * (yrange[1] - yrange[0]),
+            ]
+        )
         if rect_angle >= 0:
             rect = (rect[0], cropped_dimensions, rect_angle - 90)
         else:
@@ -259,7 +288,9 @@ class EgoPose(Base):
                 [-map_layer.transform_matrix[0, -1], map_layer.transform_matrix[1, -1]]
             )
 
-        ego_offset_from_map_upper_left: npt.NDArray[np.float32] = np.array([center_x, -center_y])
+        ego_offset_from_map_upper_left: npt.NDArray[np.float32] = np.array(
+            [center_x, -center_y]
+        )
         crop_upper_left_offset_from_ego: npt.NDArray[np.float32] = np.array(
             [xrange[0] * map_scale[0], yrange[0] * map_scale[1]]
         )
@@ -297,12 +328,12 @@ class EgoPose(Base):
         :return: Vector map data including lane segment coordinates and connections within the given range.
         """
         # load geopandas data
-        map_version = self.lidar_pc.log.map_version.replace('.gpkg', '')
-        blps_gdf = maps_db.load_vector_layer(map_version, 'baseline_paths')  # type: ignore
-        lane_poly_gdf = maps_db.load_vector_layer(map_version, 'lanes_polygons')  # type: ignore
-        intersections_gdf = maps_db.load_vector_layer(map_version, 'intersections')  # type: ignore
-        lane_connectors_gdf = maps_db.load_vector_layer(map_version, 'lane_connectors')  # type: ignore
-        lane_groups_gdf = maps_db.load_vector_layer(map_version, 'lane_groups_polygons')  # type: ignore
+        map_version = self.lidar_pc.log.map_version.replace(".gpkg", "")
+        blps_gdf = maps_db.load_vector_layer(map_version, "baseline_paths")  # type: ignore
+        lane_poly_gdf = maps_db.load_vector_layer(map_version, "lanes_polygons")  # type: ignore
+        intersections_gdf = maps_db.load_vector_layer(map_version, "intersections")  # type: ignore
+        lane_connectors_gdf = maps_db.load_vector_layer(map_version, "lane_connectors")  # type: ignore
+        lane_groups_gdf = maps_db.load_vector_layer(map_version, "lane_groups_polygons")  # type: ignore
 
         if (
             (blps_gdf is None)
@@ -325,39 +356,60 @@ class EgoPose(Base):
             )
 
         # data enhancement
-        blps_in_lanes = blps_gdf[blps_gdf['lane_fid'].notna()]
-        blps_in_intersections = blps_gdf[blps_gdf['lane_connector_fid'].notna()]
+        blps_in_lanes = blps_gdf[blps_gdf["lane_fid"].notna()]
+        blps_in_intersections = blps_gdf[blps_gdf["lane_connector_fid"].notna()]
 
         # enhance blps_in_lanes
-        lane_group_info = lane_poly_gdf[['lane_fid', 'lane_group_fid']]
-        blps_in_lanes = blps_in_lanes.merge(lane_group_info, on='lane_fid', how='outer')
+        lane_group_info = lane_poly_gdf[["lane_fid", "lane_group_fid"]]
+        blps_in_lanes = blps_in_lanes.merge(lane_group_info, on="lane_fid", how="outer")
 
         # enhance blps_in_intersections
-        lane_connectors_gdf['lane_connector_fid'] = lane_connectors_gdf['fid']
+        lane_connectors_gdf["lane_connector_fid"] = lane_connectors_gdf["fid"]
         lane_conns_info = lane_connectors_gdf[
-            ['lane_connector_fid', 'intersection_fid', 'exit_lane_fid', 'entry_lane_fid']
+            [
+                "lane_connector_fid",
+                "intersection_fid",
+                "exit_lane_fid",
+                "entry_lane_fid",
+            ]
         ]
         # Convert the exit_fid field of both data frames to the same dtype for merging.
-        lane_conns_info = lane_conns_info.astype({'lane_connector_fid': int})
-        blps_in_intersections = blps_in_intersections.astype({'lane_connector_fid': int})
-        blps_in_intersections = blps_in_intersections.merge(lane_conns_info, on='lane_connector_fid', how='outer')
+        lane_conns_info = lane_conns_info.astype({"lane_connector_fid": int})
+        blps_in_intersections = blps_in_intersections.astype(
+            {"lane_connector_fid": int}
+        )
+        blps_in_intersections = blps_in_intersections.merge(
+            lane_conns_info, on="lane_connector_fid", how="outer"
+        )
 
         # enhance blps_connection info
-        lane_blps_info = blps_in_lanes[['fid', 'lane_fid']]
-        from_blps_info = lane_blps_info.rename(columns={'fid': 'from_blp', 'lane_fid': 'exit_lane_fid'})
-        to_blps_info = lane_blps_info.rename(columns={'fid': 'to_blp', 'lane_fid': 'entry_lane_fid'})
-        blps_in_intersections = blps_in_intersections.merge(from_blps_info, on='exit_lane_fid', how='inner')
-        blps_in_intersections = blps_in_intersections.merge(to_blps_info, on='entry_lane_fid', how='inner')
+        lane_blps_info = blps_in_lanes[["fid", "lane_fid"]]
+        from_blps_info = lane_blps_info.rename(
+            columns={"fid": "from_blp", "lane_fid": "exit_lane_fid"}
+        )
+        to_blps_info = lane_blps_info.rename(
+            columns={"fid": "to_blp", "lane_fid": "entry_lane_fid"}
+        )
+        blps_in_intersections = blps_in_intersections.merge(
+            from_blps_info, on="exit_lane_fid", how="inner"
+        )
+        blps_in_intersections = blps_in_intersections.merge(
+            to_blps_info, on="entry_lane_fid", how="inner"
+        )
 
         # Select in-range blps
         candidate_lane_groups, candidate_intersections = get_candidates(
             self.translation_np, xrange, yrange, lane_groups_gdf, intersections_gdf
         )
         candidate_blps_in_lanes = blps_in_lanes[
-            blps_in_lanes['lane_group_fid'].isin(candidate_lane_groups['fid'].astype(int))
+            blps_in_lanes["lane_group_fid"].isin(
+                candidate_lane_groups["fid"].astype(int)
+            )
         ]
         candidate_blps_in_intersections = blps_in_intersections[
-            blps_in_intersections['intersection_fid'].isin(candidate_intersections['fid'].astype(int))
+            blps_in_intersections["intersection_fid"].isin(
+                candidate_intersections["fid"].astype(int)
+            )
         ]
 
         ls_coordinates_list: List[List[List[float]]] = []
@@ -367,7 +419,11 @@ class EgoPose(Base):
 
         # generate lane_segments from blps in lanes
         build_lane_segments_from_blps(
-            candidate_blps_in_lanes, ls_coordinates_list, ls_connections_list, ls_groupings_list, cross_blp_connection
+            candidate_blps_in_lanes,
+            ls_coordinates_list,
+            ls_connections_list,
+            ls_groupings_list,
+            cross_blp_connection,
         )
         # generate lane_segments from blps in intersections
         build_lane_segments_from_blps(
@@ -381,12 +437,26 @@ class EgoPose(Base):
         # generate connections between blps
         for blp_id, blp_info in cross_blp_connection.items():
             # Add predecessors
-            connect_blp_predecessor(blp_id, candidate_blps_in_intersections, cross_blp_connection, ls_connections_list)
+            connect_blp_predecessor(
+                blp_id,
+                candidate_blps_in_intersections,
+                cross_blp_connection,
+                ls_connections_list,
+            )
             # Add successors
-            connect_blp_successor(blp_id, candidate_blps_in_intersections, cross_blp_connection, ls_connections_list)
+            connect_blp_successor(
+                blp_id,
+                candidate_blps_in_intersections,
+                cross_blp_connection,
+                ls_connections_list,
+            )
 
-        ls_coordinates: npt.NDArray[np.float64] = np.asarray(ls_coordinates_list, self.translation_np.dtype)
-        ls_connections: npt.NDArray[np.int64] = np.asarray(ls_connections_list, np.int64)
+        ls_coordinates: npt.NDArray[np.float64] = np.asarray(
+            ls_coordinates_list, self.translation_np.dtype
+        )
+        ls_connections: npt.NDArray[np.int64] = np.asarray(
+            ls_connections_list, np.int64
+        )
         # Transform the lane coordinates from global frame to ego vehicle frame.
         # Flatten ls_coordinates from (num_ls, 2, 2) to (num_ls * 2, 2) for easier processing.
         ls_coordinates = ls_coordinates.reshape(-1, 2)
@@ -396,7 +466,9 @@ class EgoPose(Base):
 
         if connection_scales:
             # Generate multi-scale connections.
-            multi_scale_connections = generate_multi_scale_connections(ls_connections, connection_scales)
+            multi_scale_connections = generate_multi_scale_connections(
+                ls_connections, connection_scales
+            )
         else:
             # Use the 1-hop connections if connection_scales is not specified.
             multi_scale_connections = {1: ls_connections}

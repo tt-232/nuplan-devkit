@@ -50,6 +50,47 @@ class NuPlanMapExplorer:
         else:
             self.color_map = color_map
 
+    # def render_map_mask(self, patch_box: Tuple[float, float, float, float], patch_angle: float, layer_names: List[str], output_size: Tuple[int, int], figsize: Tuple[int, int]) -> Tuple[Figure, Axes]:
+    #     """
+    #     Render map mask of the patch specified by patch_box and patch_angle.
+    #     :param patch_box: Patch box defined as [x_center, y_center, height, width].
+    #     :param patch_angle: Patch orientation in degrees.
+    #     :param layer_names: A list of layer names to be rendered.
+    #     :param output_size: Size of the output mask (h, w).
+    #     :param figsize: Size of the figure.
+    #     :return: The matplotlib figure and the axes of the rendered layers.
+    #     """
+    #     import matplotlib.pyplot as plt
+    #     import matplotlib.patches as mpatches
+    #     from matplotlib.colors import ListedColormap
+    #     map_dims = self.map_api.get_map_dimension()
+    #     if output_size is None:
+    #         output_size = (int(map_dims[1]), int(map_dims[0]))
+
+    #     map_mask = self.get_map_mask(patch_box, patch_angle, layer_names, output_size)
+
+    #     fig, ax = plt.subplots(figsize=figsize)
+    #     ax.set_xlim(0, output_size[1])
+    #     ax.set_ylim(0, output_size[0])
+    #     ax.set_facecolor('white')  # Set the background color of the plot
+
+    #     # Use predefined color map
+    #     colors = [self.color_map[layer] for layer in layer_names]
+    #     custom_cmap = ListedColormap(colors)
+
+    #     # Render each layer with a different color from the predefined color map
+    #     for i, layer in enumerate(layer_names):
+    #         ax.imshow(map_mask[i], alpha=0.7, origin='lower', cmap=custom_cmap, vmin=0, vmax=len(map_mask) - 1)
+
+    #     ax.grid(False)  # Turn off the grid
+    #     ax.set_axis_off()  # Hide axes
+
+    #     # Create a legend with the defined colors
+    #     patches = [mpatches.Patch(color=self.color_map[layer], label=layer) for layer in layer_names]
+    #     ax.legend(handles=patches, loc='upper left', bbox_to_anchor=(1, 1))
+
+    #     return fig, ax
+
     def render_map_mask(
         self,
         patch_box: Tuple[float, float, float, float],
@@ -232,7 +273,7 @@ class NuPlanMapExplorer:
             layer_mask = self._layer_geom_to_mask(layer_name, layer_geom, local_box, output_size)
             if layer_mask is not None:
                 map_mask.append(layer_mask)
-
+        # print(map_mask)
         return np.array(map_mask)
 
     def get_map_mask(

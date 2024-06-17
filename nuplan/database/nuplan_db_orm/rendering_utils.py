@@ -22,14 +22,25 @@ from nuplan.database.utils.geometry import view_points
 logger = logging.getLogger()
 
 
-def lidar_pc_closest_image(lidar_pc: LidarPc, camera_channels: Optional[List[str]] = None) -> List[Image]:
+def lidar_pc_closest_image(
+    lidar_pc: LidarPc, camera_channels: Optional[List[str]] = None
+) -> List[Image]:
     """
     Find the closest images to LidarPc.
     :param camera_channels: List of image channels to find closest image of.
     :return: List of Images from the provided channels closest to LidarPc.
     """
     if camera_channels is None:
-        camera_channels = ["CAM_F0", "CAM_B0", "CAM_L0", "CAM_L1", "CAM_R0", "CAM_R1"]
+        camera_channels = [
+            "CAM_F0",
+            "CAM_B0",
+            "CAM_L0",
+            "CAM_L1",
+            "CAM_R0",
+            "CAM_R1",
+            "CAM_R2",
+            "CAM_L2",
+        ]
 
     imgs = []
     for channel in camera_channels:
@@ -76,8 +87,40 @@ def render_pointcloud_in_image(
     plt.axis("off")
 
 
+# def render_pointcloud_in_image(
+#     ax,  # Adding an axis object to plot on
+#     db: NuPlanDB,
+#     lidar_pc: LidarPc,
+#     dot_size: int = 5,
+#     color_channel: int = 2,
+#     max_radius: float = np.inf,
+#     image_channel: str = "CAM_F0",
+# ) -> None:
+#     """
+#     Scatter-plots pointcloud on top of image on the provided matplotlib axis.
+#     :param ax: Matplotlib axis to plot on.
+#     :param db: Log Database.
+#     :param lidar_pc: LidarPc Sample.
+#     :param dot_size: Scatter plot dot size.
+#     :param color_channel: Set to 2 for coloring dots by height, 3 for intensity.
+#     :param max_radius: Max xy radius of lidar points to include in visualization.
+#     :param image_channel: Which image to render.
+#     """
+#     image = lidar_pc_closest_image(lidar_pc, [image_channel])[0]
+#     points, coloring, im = map_pointcloud_to_image(
+#         db, lidar_pc, image, color_channel=color_channel, max_radius=max_radius
+#     )
+#     ax.imshow(im)
+#     ax.scatter(points[0, :], points[1, :], c=coloring, s=dot_size)
+#     ax.axis("off")
+
+
 def map_pointcloud_to_image(
-    db: NuPlanDB, lidar_pc: LidarPc, img: Image, color_channel: int = 2, max_radius: float = np.inf
+    db: NuPlanDB,
+    lidar_pc: LidarPc,
+    img: Image,
+    color_channel: int = 2,
+    max_radius: float = np.inf,
 ) -> Tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], PIL.Image.Image]:
     """
     Given a lidar and camera sample_data, load point-cloud and map it to the image plane.
@@ -91,11 +134,9 @@ def map_pointcloud_to_image(
     """
     assert isinstance(lidar_pc, LidarPc), "first input must be a lidar_pc modality"
     assert isinstance(img, Image), "second input must be a camera modality"
-
     # Load files.
-    pc = lidar_pc.load()
+    pc = lidar_pc.load(db)
     im = img.load_as(db, img_type="pil")
-
     # Filter lidar points to be inside desired range.
     radius = np.sqrt(pc.points[0] ** 2 + pc.points[1] ** 2)
     keep = radius <= max_radius
@@ -134,7 +175,9 @@ def map_pointcloud_to_image(
     return points, coloring, im
 
 
-def render_lidar_box(lidar_box: LidarBox, db: NuPlanDB, ax: Optional[List[Axes]] = None) -> None:
+def render_lidar_box(
+    lidar_box: LidarBox, db: NuPlanDB, ax: Optional[List[Axes]] = None
+) -> None:
     """
     Render LidarBox on an image and a lidar.
     :param lidar_box: A LidarBox object
@@ -152,9 +195,13 @@ def render_lidar_box(lidar_box: LidarBox, db: NuPlanDB, ax: Optional[List[Axes]]
     for img in imgs:
         cam = img.camera
         box = lidar_box.box()
-        box.transform(img.ego_pose.trans_matrix_inv)  # Move box to ego vehicle coord system
+        box.transform(
+            img.ego_pose.trans_matrix_inv
+        )  # Move box to ego vehicle coord system
         box.transform(cam.trans_matrix_inv)  # Move box to sensor coord system
-        if box_in_image(box, cam.intrinsic_np, (cam.width, cam.height), vis_level=BoxVisibility.ANY):
+        if box_in_image(
+            box, cam.intrinsic_np, (cam.width, cam.height), vis_level=BoxVisibility.ANY
+        ):
             found = True
             break  # Found an image that matches.
 

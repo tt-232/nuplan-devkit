@@ -19,7 +19,12 @@ from nuplan.database.nuplan_db_orm.frame import Frame
 from nuplan.database.nuplan_db_orm.lidar_box import LidarBox
 from nuplan.database.nuplan_db_orm.models import Base
 from nuplan.database.nuplan_db_orm.scene import Scene
-from nuplan.database.nuplan_db_orm.utils import get_boxes, get_future_box_sequence, pack_future_boxes, render_on_map
+from nuplan.database.nuplan_db_orm.utils import (
+    get_boxes,
+    get_future_box_sequence,
+    pack_future_boxes,
+    render_on_map,
+)
 from nuplan.database.utils.boxes.box3d import Box3D
 from nuplan.database.utils.label.label import Label
 from nuplan.database.utils.label.utils import raw_mapping
@@ -40,19 +45,39 @@ class LidarPc(Base):
     __tablename__ = "lidar_pc"
 
     token = Column(sql_types.HexLen8, primary_key=True)  # type: str
-    next_token = Column(sql_types.HexLen8, ForeignKey("lidar_pc.token"), nullable=True)  # type: str
-    prev_token = Column(sql_types.HexLen8, ForeignKey("lidar_pc.token"), nullable=True)  # type: str
-    ego_pose_token = Column(sql_types.HexLen8, ForeignKey("ego_pose.token"), nullable=False)  # type: str
-    lidar_token = Column(sql_types.HexLen8, ForeignKey("lidar.token"), nullable=False)  # type: str
-    scene_token = Column(sql_types.HexLen8, ForeignKey("scene.token"), nullable=False)  # type: str
+    next_token = Column(
+        sql_types.HexLen8, ForeignKey("lidar_pc.token"), nullable=True
+    )  # type: str
+    prev_token = Column(
+        sql_types.HexLen8, ForeignKey("lidar_pc.token"), nullable=True
+    )  # type: str
+    ego_pose_token = Column(
+        sql_types.HexLen8, ForeignKey("ego_pose.token"), nullable=False
+    )  # type: str
+    lidar_token = Column(
+        sql_types.HexLen8, ForeignKey("lidar.token"), nullable=False
+    )  # type: str
+    scene_token = Column(
+        sql_types.HexLen8, ForeignKey("scene.token"), nullable=False
+    )  # type: str
     filename = Column(String(128))  # type: str
     timestamp = Column(Integer)  # field type: int
 
-    next = relationship("LidarPc", foreign_keys=[next_token], remote_side=[token])  # type: LidarPc
-    prev = relationship("LidarPc", foreign_keys=[prev_token], remote_side=[token])  # type: LidarPc
-    ego_pose = relationship("EgoPose", foreign_keys=[ego_pose_token], back_populates="lidar_pc")  # type: EgoPose
-    scene = relationship("Scene", foreign_keys=[scene_token], back_populates="lidar_pcs")  # type: Scene
-    lidar_boxes = relationship("LidarBox", foreign_keys="LidarBox.lidar_pc_token", back_populates="lidar_pc")
+    next = relationship(
+        "LidarPc", foreign_keys=[next_token], remote_side=[token]
+    )  # type: LidarPc
+    prev = relationship(
+        "LidarPc", foreign_keys=[prev_token], remote_side=[token]
+    )  # type: LidarPc
+    ego_pose = relationship(
+        "EgoPose", foreign_keys=[ego_pose_token], back_populates="lidar_pc"
+    )  # type: EgoPose
+    scene = relationship(
+        "Scene", foreign_keys=[scene_token], back_populates="lidar_pcs"
+    )  # type: Scene
+    lidar_boxes = relationship(
+        "LidarBox", foreign_keys="LidarBox.lidar_pc_token", back_populates="lidar_pc"
+    )
 
     @property
     def _session(self) -> Any:
@@ -96,7 +121,9 @@ class LidarPc(Base):
             return self.prev.ego_pose
         return None
 
-    def future_or_past_ego_poses(self, number: int, mode: str, direction: str) -> List[EgoPose]:
+    def future_or_past_ego_poses(
+        self, number: int, mode: str, direction: str
+    ) -> List[EgoPose]:
         """
         Get n future or past vehicle poses. Note here the frequency of pose differs from frequency of LidarPc.
         :param number: Number of poses to fetch or number of seconds of ego poses to fetch.
@@ -104,16 +131,19 @@ class LidarPc(Base):
         :param direction: Future or past ego poses to fetch, could be 'prev' or 'next'.
         :return: List of up to n or n seconds future or past ego poses.
         """
-        if direction == 'prev':
-            if mode == 'n_poses':
+        if direction == "prev":
+            if mode == "n_poses":
                 return (  # type: ignore
                     self._session.query(EgoPose)
-                    .filter(EgoPose.timestamp < self.ego_pose.timestamp, self.lidar.log_token == EgoPose.log_token)
+                    .filter(
+                        EgoPose.timestamp < self.ego_pose.timestamp,
+                        self.lidar.log_token == EgoPose.log_token,
+                    )
                     .order_by(EgoPose.timestamp.desc())
                     .limit(number)
                     .all()
                 )
-            elif mode == 'n_seconds':
+            elif mode == "n_seconds":
                 return (  # type: ignore
                     self._session.query(EgoPose)
                     .filter(
@@ -126,16 +156,19 @@ class LidarPc(Base):
                 )
             else:
                 raise ValueError(f"Unknown mode: {mode}.")
-        elif direction == 'next':
-            if mode == 'n_poses':
+        elif direction == "next":
+            if mode == "n_poses":
                 return (  # type: ignore
                     self._session.query(EgoPose)
-                    .filter(EgoPose.timestamp > self.ego_pose.timestamp, self.lidar.log_token == EgoPose.log_token)
+                    .filter(
+                        EgoPose.timestamp > self.ego_pose.timestamp,
+                        self.lidar.log_token == EgoPose.log_token,
+                    )
                     .order_by(EgoPose.timestamp.asc())
                     .limit(number)
                     .all()
                 )
-            elif mode == 'n_seconds':
+            elif mode == "n_seconds":
                 return (  # type: ignore
                     self._session.query(EgoPose)
                     .filter(
@@ -158,13 +191,15 @@ class LidarPc(Base):
         :param remove_close: If true, remove nearby points, defaults to True.
         :return: Loaded point cloud.
         """
-        if self.lidar.channel == 'MergedPointCloud':
-            if self.filename.endswith('bin2'):
-                return LidarPointCloud.from_buffer(self.load_bytes(db), 'bin2')
+        if self.lidar.channel == "MergedPointCloud":
+            if self.filename.endswith("bin2"):
+                return LidarPointCloud.from_buffer(self.load_bytes(db), "bin2")
             else:
                 # load pcd file
-                assert self.filename.endswith('pcd'), f'.pcd file is expected but get {self.filename}'
-                return LidarPointCloud.from_buffer(self.load_bytes(db), 'pcd')
+                assert self.filename.endswith(
+                    "pcd"
+                ), f".pcd file is expected but get {self.filename}"
+                return LidarPointCloud.from_buffer(self.load_bytes(db), "pcd")
         else:
             raise NotImplementedError
 
@@ -174,7 +209,9 @@ class LidarPc(Base):
         :param db: Log Database.
         :return: Point cloud bytes.
         """
-        blob: BinaryIO = db.load_blob(os.path.join("sensor_blobs", self.filename))
+        blob: BinaryIO = db.load_blob(
+            os.path.join("nuplan-v1.1/sensor_blobs", self.filename)
+        )
         return blob
 
     def path(self, db: NuPlanDB) -> str:
@@ -192,12 +229,17 @@ class LidarPc(Base):
         :param frame: Specify the frame in which the boxes will be returned.
         :return: The list of boxes.
         """
-        boxes: List[Box3D] = get_boxes(self, frame, self.ego_pose.trans_matrix_inv, self.lidar.trans_matrix_inv)
+        boxes: List[Box3D] = get_boxes(
+            self, frame, self.ego_pose.trans_matrix_inv, self.lidar.trans_matrix_inv
+        )
 
         return boxes
 
     def boxes_with_future_waypoints(
-        self, future_horizon_len_s: float, future_interval_s: float, frame: Frame = Frame.GLOBAL
+        self,
+        future_horizon_len_s: float,
+        future_interval_s: float,
+        frame: Frame = Frame.GLOBAL,
     ) -> List[Box3D]:
         """
         Loads all boxes and future boxes associated with this LidarPc record. Boxes are returned in the global frame by
@@ -215,7 +257,8 @@ class LidarPc(Base):
             self._session.query(LidarPc)
             .filter(
                 LidarPc.timestamp - self.timestamp >= 0,
-                LidarPc.timestamp - self.timestamp <= future_horizon_len_ms + TIMESTAMP_MARGIN_MS,
+                LidarPc.timestamp - self.timestamp
+                <= future_horizon_len_ms + TIMESTAMP_MARGIN_MS,
             )
             .order_by(LidarPc.timestamp.asc())
             .all()
@@ -274,7 +317,9 @@ class LidarPc(Base):
                 DEFAULT_FUTURE_HORIZON_LEN_S = 6.0
                 DEFAULT_FUTURE_INTERVAL_S = 0.5
                 boxes = self.boxes_with_future_waypoints(
-                    DEFAULT_FUTURE_HORIZON_LEN_S, DEFAULT_FUTURE_INTERVAL_S, Frame.SENSOR
+                    DEFAULT_FUTURE_HORIZON_LEN_S,
+                    DEFAULT_FUTURE_INTERVAL_S,
+                    Frame.SENSOR,
                 )
             else:
                 boxes = self.boxes(Frame.SENSOR)
@@ -285,14 +330,14 @@ class LidarPc(Base):
             DEFAULT_FUTURE_HORIZON_LEN_S = 6
             TIMESTAMP_MARGIN_S = 1
             ego_poses = self.future_or_past_ego_poses(
-                DEFAULT_FUTURE_HORIZON_LEN_S + TIMESTAMP_MARGIN_S, 'n_seconds', 'next'
+                DEFAULT_FUTURE_HORIZON_LEN_S + TIMESTAMP_MARGIN_S, "n_seconds", "next"
             )
         else:
             ego_poses = [self.ego_pose]
 
         labelmap = {
-            lid: Label(raw_mapping['id2local'][lid], raw_mapping['id2color'][lid])
-            for lid in raw_mapping['id2local'].keys()
+            lid: Label(raw_mapping["id2local"][lid], raw_mapping["id2color"][lid])
+            for lid in raw_mapping["id2local"].keys()
         }
 
         render_on_map(
@@ -310,14 +355,25 @@ class LidarPc(Base):
             render_future_ego_poses=render_future_ego_poses,
         )
 
-        plt.axis('equal')
-        ax.set_title('PC {} from {} in {}'.format(self.token, self.lidar.channel, self.log.location))
+        plt.axis("equal")
+        ax.set_title(
+            "PC {} from {} in {}".format(
+                self.token, self.lidar.channel, self.log.location
+            )
+        )
 
         return ax
 
 
 EgoPose.lidar_pc = relationship(
-    "LidarPc", foreign_keys="LidarPc.ego_pose_token", back_populates="ego_pose", uselist=False
+    "LidarPc",
+    foreign_keys="LidarPc.ego_pose_token",
+    back_populates="ego_pose",
+    uselist=False,
 )
-Scene.lidar_pcs = relationship("LidarPc", foreign_keys=[LidarPc.scene_token], back_populates="scene")
-LidarBox.lidar_pc = relationship("LidarPc", foreign_keys=[LidarBox.lidar_pc_token], back_populates="lidar_boxes")
+Scene.lidar_pcs = relationship(
+    "LidarPc", foreign_keys=[LidarPc.scene_token], back_populates="scene"
+)
+LidarBox.lidar_pc = relationship(
+    "LidarPc", foreign_keys=[LidarBox.lidar_pc_token], back_populates="lidar_boxes"
+)

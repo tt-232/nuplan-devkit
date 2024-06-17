@@ -46,7 +46,7 @@ class NuPlanMapWrapper(NuPlanMap):
         ]
         self.vector_line_layers = ['lane_connectors', 'boundaries']
         self.vector_point_layers = ['traffic_lights']
-        self.vector_layers = self.vector_polygon_layers + self.vector_line_layers + self.vector_point_layers
+        self.vector_layers = self.vector_line_layers + self.vector_point_layers + self.vector_polygon_layers # self.vector_polygon_layers + self.vector_line_layers + self.vector_point_layers
 
     def load_vector_layer(self, layer_name: str) -> gpd.geodataframe:
         """

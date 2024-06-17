@@ -22,7 +22,9 @@ class Camera(Base):
     __tablename__ = "camera"
 
     token = Column(sql_types.HexLen8, primary_key=True)  # type: str
-    log_token = Column(sql_types.HexLen8, ForeignKey("log.token"), nullable=False)  # type: str
+    log_token = Column(
+        sql_types.HexLen8, ForeignKey("log.token"), nullable=False
+    )  # type: str
     channel = Column(String(64))  # type: str
     model = Column(String(64))  # type: str
     translation = Column(sql_types.SqlTranslation)  # type: data_types.Translation

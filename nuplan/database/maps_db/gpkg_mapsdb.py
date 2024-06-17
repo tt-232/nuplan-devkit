@@ -28,14 +28,19 @@ logger = logging.getLogger(__name__)
 warnings.filterwarnings("ignore", category=rasterio.errors.NotGeoreferencedWarning)
 
 # Available map locations
-MAP_LOCATIONS = {'sg-one-north', 'us-ma-boston', 'us-nv-las-vegas-strip', 'us-pa-pittsburgh-hazelwood'}
+MAP_LOCATIONS = {
+    "sg-one-north",
+    "us-ma-boston",
+    "us-nv-las-vegas-strip",
+    "us-pa-pittsburgh-hazelwood",
+}
 
 # Dimensions of raster layers for each location
 MAP_DIMENSIONS = {
-    'sg-one-north': (21070, 28060),
-    'us-ma-boston': (20380, 28730),
-    'us-nv-las-vegas-strip': (69820, 30120),
-    'us-pa-pittsburgh-hazelwood': (22760, 23090),
+    "sg-one-north": (21070, 28060),
+    "us-ma-boston": (20380, 28730),
+    "us-nv-las-vegas-strip": (69820, 30120),
+    "us-pa-pittsburgh-hazelwood": (22760, 23090),
 }
 
 # S3 download params.
@@ -43,7 +48,7 @@ MAX_ATTEMPTS = 360
 SECONDS_BETWEEN_ATTEMPTS = 5
 
 # Dummy layer to use for downloading the map package for the first time
-DUMMY_LOAD_LAYER = 'lane_connectors'
+DUMMY_LOAD_LAYER = "lane_connectors"
 
 
 class GPKGMapsDBException(Exception):
@@ -70,7 +75,9 @@ class GPKGMapsDB(IMapsDB):
         self._map_root = map_root
 
         self._blob_store = BlobStoreCreator.create_mapsdb(map_root=self._map_root)
-        version_file = self._blob_store.get(f"{self._map_version}.json")  # get blob and save to disk
+        version_file = self._blob_store.get(
+            f"{self._map_version}.json"
+        )  # get blob and save to disk
         self._metadata = json.load(version_file)
 
         # The dimensions of the maps are hard-coded for the 4 locations.
@@ -80,13 +87,13 @@ class GPKGMapsDB(IMapsDB):
         self._max_attempts = MAX_ATTEMPTS
         self._seconds_between_attempts = SECONDS_BETWEEN_ATTEMPTS
 
-        self._map_lock_dir = os.path.join(self._map_root, '.maplocks')
+        self._map_lock_dir = os.path.join(self._map_root, ".maplocks")
         os.makedirs(self._map_lock_dir, exist_ok=True)
 
         # Load map data to trigger automatic downloading.
         self._load_map_data()
 
-    def __reduce__(self) -> Tuple[Type['GPKGMapsDB'], Tuple[Any, ...]]:
+    def __reduce__(self) -> Tuple[Type["GPKGMapsDB"], Tuple[Any, ...]]:
         """
         Hints on how to reconstruct the object when pickling.
         This object is reconstructed by pickle to avoid serializing potentially large state/caches.
@@ -106,7 +113,9 @@ class GPKGMapsDB(IMapsDB):
         Lists the map version names for all valid map locations, e.g.
         ['9.17.1964', '9.12.1817', '9.15.1915', '9.17.1937']
         """
-        return [self._metadata[location]["version"] for location in self.get_locations()]
+        return [
+            self._metadata[location]["version"] for location in self.get_locations()
+        ]
 
     def get_map_version(self) -> str:
         """Inherited, see superclass."""
@@ -122,19 +131,23 @@ class GPKGMapsDB(IMapsDB):
         :param location: Name of map location, e.g. "sg-one-north". See `self.get_locations()`.
         :param layer_name: Name of layer, e.g. `drivable_area`. Use self.layer_names(location) for complete list.
         """
-        if layer_name == 'intensity':
+        if layer_name == "intensity":
             return self._metadata[location]["layers"]["Intensity"]["shape"]  # type: ignore
         else:
             # The dimensions of other map layers are using the hard-coded values.
             return list(self._map_dimensions[location])
 
-    def _get_transform_matrix(self, location: str, layer_name: str) -> npt.NDArray[np.float64]:
+    def _get_transform_matrix(
+        self, location: str, layer_name: str
+    ) -> npt.NDArray[np.float64]:
         """
         Get transformation matrix of a layer given location and layer name.
         :param location: Name of map location, e.g. "sg-one-north`. See `self.get_locations()`.
         :param layer_name: Name of layer, e.g. `drivable_area`. Use self.layer_names(location) for complete list.
         """
-        return np.array(self._metadata[location]["layers"][layer_name]["transform_matrix"])
+        return np.array(
+            self._metadata[location]["layers"][layer_name]["transform_matrix"]
+        )
 
     @staticmethod
     def is_binary(layer_name: str) -> bool:
@@ -142,7 +155,13 @@ class GPKGMapsDB(IMapsDB):
         Checks if the layer is binary.
         :param layer_name: Name of layer, e.g. `drivable_area`. Use self.layer_names(location) for complete list.
         """
-        return layer_name in ["drivable_area", "intersection", "pedestrian_crossing", "walkway", "walk_way"]
+        return layer_name in [
+            "drivable_area",
+            "intersection",
+            "pedestrian_crossing",
+            "walkway",
+            "walk_way",
+        ]
 
     @staticmethod
     def _can_dilate(layer_name: str) -> bool:
@@ -161,7 +180,7 @@ class GPKGMapsDB(IMapsDB):
     def layer_names(self, location: str) -> Sequence[str]:
         """Inherited, see superclass."""
         gpkg_layers = self._metadata[location]["layers"].keys()
-        return list(filter(lambda x: '_distance_px' not in x, gpkg_layers))
+        return list(filter(lambda x: "_distance_px" not in x, gpkg_layers))
 
     def load_layer(self, location: str, layer_name: str) -> MapLayer:
         """Inherited, see superclass."""
@@ -187,7 +206,10 @@ class GPKGMapsDB(IMapsDB):
         distance_matrix = None
 
         return MapLayer(
-            data=layer_data, metadata=layer_meta, joint_distance=distance_matrix, transform_matrix=transform_matrix
+            data=layer_data,
+            metadata=layer_meta,
+            joint_distance=distance_matrix,
+            transform_matrix=transform_matrix,
         )
 
     def _wait_for_expected_filesize(self, path_on_disk: str, location: str) -> None:
@@ -200,12 +222,16 @@ class GPKGMapsDB(IMapsDB):
             return
 
         s3_bucket = self._blob_store._remote._bucket
-        s3_key = os.path.join(self._blob_store._remote._prefix, self._get_gpkg_file_path(location))
+        s3_key = os.path.join(
+            self._blob_store._remote._prefix, self._get_gpkg_file_path(location)
+        )
 
         # Create a new S3 session for the request.
         # In a multiprocess context, using the pickled / unpickled client can lead to authentication failures.
         client = get_s3_client()
-        map_file_size = client.head_object(Bucket=s3_bucket, Key=s3_key).get('ContentLength', 0)
+        map_file_size = client.head_object(Bucket=s3_bucket, Key=s3_key).get(
+            "ContentLength", 0
+        )
 
         # Wait if file not downloaded.
         for _ in range(self._max_attempts):
@@ -227,7 +253,7 @@ class GPKGMapsDB(IMapsDB):
         :param layer_lock_file: Path to lock file.
         :param file_path: Path of the file being downloaded.
         """
-        fd = open(layer_lock_file, 'w')
+        fd = open(layer_lock_file, "w")
         try:
             fcntl.flock(fd, fcntl.LOCK_EX)
             _ = self._blob_store.save_to_disk(file_path, check_for_compressed=True)
@@ -241,13 +267,13 @@ class GPKGMapsDB(IMapsDB):
     def load_vector_layer(self, location: str, layer_name: str) -> gpd.geodataframe:
         """Inherited, see superclass."""
         # TODO: Remove temporary workaround once map_version is cleaned
-        location = location.replace('.gpkg', '')
+        location = location.replace(".gpkg", "")
 
         rel_path = self._get_gpkg_file_path(location)
         path_on_disk = os.path.join(self._map_root, rel_path)
 
         if not os.path.exists(path_on_disk):
-            layer_lock_file = f'{self._map_lock_dir}/{location}_{layer_name}.lock'
+            layer_lock_file = f"{self._map_lock_dir}/{location}_{layer_name}.lock"
             self._safe_save_layer(layer_lock_file, rel_path)
         self._wait_for_expected_filesize(path_on_disk, location)
 
@@ -257,9 +283,13 @@ class GPKGMapsDB(IMapsDB):
 
             # The projected coordinate system depends on which UTM zone the mapped location is in.
             map_meta = gpd.read_file(path_on_disk, layer="meta", engine="pyogrio")
-            projection_system = map_meta[map_meta["key"] == "projectedCoordSystem"]["value"].iloc[0]
+            projection_system = map_meta[map_meta["key"] == "projectedCoordSystem"][
+                "value"
+            ].iloc[0]
 
-            gdf_in_pixel_coords = pyogrio.read_dataframe(path_on_disk, layer=layer_name, fid_as_index=True)
+            gdf_in_pixel_coords = pyogrio.read_dataframe(
+                path_on_disk, layer=layer_name, fid_as_index=True
+            )
             gdf_in_utm_coords = gdf_in_pixel_coords.to_crs(projection_system)
 
             # For backwards compatibility, cast the index to string datatype.
@@ -272,7 +302,7 @@ class GPKGMapsDB(IMapsDB):
     def vector_layer_names(self, location: str) -> Sequence[str]:
         """Inherited, see superclass."""
         # TODO: Remove temporary workaround once map_version is cleaned
-        location = location.replace('.gpkg', '')
+        location = location.replace(".gpkg", "")
 
         rel_path = self._get_gpkg_file_path(location)
         path_on_disk = os.path.join(self._map_root, rel_path)
@@ -302,7 +332,9 @@ class GPKGMapsDB(IMapsDB):
 
         return rasterio.open(path_on_disk)
 
-    def get_layer_dataset(self, location: str, layer_name: str) -> rasterio.DatasetReader:
+    def get_layer_dataset(
+        self, location: str, layer_name: str
+    ) -> rasterio.DatasetReader:
         """
         Returns a *context manager* for the layer dataset.
         Extract the result in a "with ... as ...:" line.
@@ -312,11 +344,17 @@ class GPKGMapsDB(IMapsDB):
         """
         with self._get_map_dataset(location) as map_dataset:
             layer_dataset_path = next(
-                (path for path in map_dataset.subdatasets if path.endswith(":" + layer_name)), None
+                (
+                    path
+                    for path in map_dataset.subdatasets
+                    if path.endswith(":" + layer_name)
+                ),
+                None,
             )
             if layer_dataset_path is None:
                 raise ValueError(
-                    f"Layer '{layer_name}' not found in map '{location}', " f"version '{self.get_version(location)}'"
+                    f"Layer '{layer_name}' not found in map '{location}', "
+                    f"version '{self.get_version(location)}'"
                 )
 
             return rasterio.open(layer_dataset_path)
@@ -399,7 +437,7 @@ class GPKGMapsDB(IMapsDB):
         """
         np_data = np.load(path_on_disk)
 
-        return np_data['data']  # type: ignore
+        return np_data["data"]  # type: ignore
 
     def _get_expected_file_size(self, path: str, shape: List[int]) -> int:
         """
@@ -408,11 +446,13 @@ class GPKGMapsDB(IMapsDB):
         :param shape: The shape of the map file.
         :return: The expected file size.
         """
-        if path.endswith('_dist.npy'):
+        if path.endswith("_dist.npy"):
             return shape[0] * shape[1] * 4  # float32 values take 4 bytes per pixel.
         return shape[0] * shape[1]
 
-    def _get_layer_matrix(self, location: str, layer_name: str) -> npt.NDArray[np.uint8]:
+    def _get_layer_matrix(
+        self, location: str, layer_name: str
+    ) -> npt.NDArray[np.uint8]:
         """
         Returns the map layer for `location` and `layer_name` as a numpy array.
         :param location: Name of map location, e.g. "sg-one-north`. See `self.get_locations()`.
@@ -439,13 +479,15 @@ class GPKGMapsDB(IMapsDB):
             layer_data = layer_dataset_ops.load_layer_as_numpy(layer_dataset, is_bin)
 
         # Convert distance_px to dist matrix.
-        if '_distance_px' in layer_name:
+        if "_distance_px" in layer_name:
             transform_matrix = self._get_transform_matrix(location, layer_name)
             precision = 1 / transform_matrix[0, 0]
 
-            layer_data = np.negative(layer_data / precision).astype('float32')
+            layer_data = np.negative(layer_data / precision).astype("float32")
 
-        npy_file_path = os.path.join(self._map_root, f"{location}/{self.get_version(location)}/{layer_name}.npy")
+        npy_file_path = os.path.join(
+            self._map_root, f"{location}/{self.get_version(location)}/{layer_name}.npy"
+        )
         np.savez_compressed(npy_file_path, data=layer_data)
 
     def _save_all_layers(self, location: str) -> None:
